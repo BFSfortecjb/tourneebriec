@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="author" content="Jérémy Bizeul / Vigie-lance">
+<meta name="copyright" content="© Jérémy Bizeul / Vigie-lance">
+<meta name="theme-color" content="#b3261e">
+<title>Tournée calendriers — Briec</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!--
+  Tournée calendriers — version test locale
+  © Jérémy Bizeul / Vigie-lance — Tous droits réservés
+-->
+
+<header>
+  <div class="head-top">
+    <h1>Tournée calendriers — Briec</h1>
+    <span id="teamBadge" class="badge"></span>
+  </div>
+  <div id="statsBar" class="stats-bar"></div>
+</header>
+
+<main>
+  <div id="ptr" class="ptr hidden"></div>
+  <!-- CARTE -->
+  <section id="view-map" class="view active">
+    <div id="map"></div>
+    <div id="addBanner" class="banner hidden">Mode ajout : touchez la carte à l'emplacement de l'habitation</div>
+    <div id="placeBanner" class="banner hidden"><span id="placeTxt">Touchez la carte pour placer l'habitation</span> <button id="btnCancelPlace" class="mini">Annuler</button></div>
+    <form id="searchForm" class="map-search">
+      <input id="searchInput" type="search" placeholder="Chercher une adresse…" autocomplete="off">
+      <button type="submit">OK</button>
+    </form>
+    <div class="fab-col">
+      <button id="btnLocate" class="fab" title="Ma position">◎</button>
+      <button id="btnAdd" class="fab fab-main" title="Ajouter une habitation">＋</button>
+    </div>
+  </section>
+
+  <!-- LISTE -->
+  <section id="view-list" class="view">
+    <div class="toolbar">
+      <div id="filters" class="chips"></div>
+      <div class="toolbar-btns">
+        <button id="btnOpenImp" class="btn-sec">Importer des adresses</button>
+        <button id="btnSectors" class="btn-sec">Secteurs</button>
+        <button id="btnToggleRange" class="btn-sec">+ Rue</button>
+      </div>
+    </div>
+    <div id="sectorBox" class="sector-box hidden"></div>
+    <select id="sFilter" class="q-select" aria-label="Secteur"></select>
+    <select id="qFilter" class="q-select" aria-label="Quartier"></select>
+    <div class="fold-tools">
+      <button id="btnFoldAll" class="chip" type="button">▸ Tout replier</button>
+      <button id="btnUnfoldAll" class="chip" type="button">▾ Tout déplier</button>
+    </div>
+    <form id="rangeForm" class="card hidden">
+      <h3>Ajouter une rue (liste de numéros)</h3>
+      <label>Rue<input id="rgStreet" type="text" required placeholder="Rue des Lilas"></label>
+      <div class="row">
+        <label>Du n°<input id="rgFrom" type="number" min="1" required value="1"></label>
+        <label>Au n°<input id="rgTo" type="number" min="1" required value="20"></label>
+      </div>
+      <label>Numéros
+        <select id="rgStep">
+          <option value="all">Tous</option>
+          <option value="even">Pairs seulement</option>
+          <option value="odd">Impairs seulement</option>
+        </select>
+      </label>
+      <button type="submit" class="btn-main">Créer les habitations</button>
+      <p class="hint">Elles apparaissent dans la liste. Vous pourrez les placer sur la carte ensuite (facultatif).</p>
+    </form>
+    <div id="listBody"></div>
+  </section>
+
+  <!-- BILAN -->
+  <!-- DONS -->
+  <section id="view-dons" class="view">
+    <div id="donsBody"></div>
+  </section>
+
+  <section id="view-stats" class="view">
+    <div id="statsBody"></div>
+  </section>
+
+  <section id="view-bilan" class="view">
+    <div id="bilanBody"></div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-tab="map" class="active"><span>🗺️</span>Carte</button>
+  <button data-tab="list"><span>📋</span>Liste</button>
+  <button data-tab="dons"><span>💶</span>Comptage</button>
+  <button data-tab="stats"><span>📈</span>Stats</button>
+  <button data-tab="bilan"><span>📊</span>Bilan</button>
+</nav>
+
+<!-- FEUILLE HABITATION -->
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-inner">
+    <div class="sheet-head">
+      <h2 id="sheetTitle">Habitation</h2>
+      <button id="btnClose" class="x" aria-label="Fermer">✕</button>
+    </div>
+    <div id="unitChips" class="chips unit-chips"></div>
+    <div class="row">
+      <label class="grow">Rue<input id="fStreet" type="text" list="streetList" autocomplete="off"></label>
+      <label class="num">N°<input id="fNumber" type="text" inputmode="text" autocomplete="off"></label>
+    </div>
+    <datalist id="streetList"></datalist>
+    <label>Logement (immeuble : appartement, étage…)<input id="fUnit" type="text" placeholder="Ex : Apt 2, 1er étage" autocomplete="off"></label>
+    <label id="rowCount">Nombre de logements à créer à cette adresse<input id="fCount" type="number" min="1" max="60" value="1" inputmode="numeric"></label>
+    <label class="chk"><input id="fDog" type="checkbox"> 🐶 Chien à cette adresse</label>
+    <label class="chk"><input id="fFF" type="checkbox"> 🧑‍🚒 Ancien pompier à cette adresse</label>
+    <label>Note (facultatif)<input id="fNote" type="text" placeholder="Ex : revenir après 18h, chien…" autocomplete="off"></label>
+    <div class="don-box">
+      <p class="sheet-label" style="margin-top:0">Don (facultatif)</p>
+      <div id="quickBox"></div>
+      <div class="row">
+        <label class="grow">Montant (€)<input id="fAmount" type="text" inputmode="decimal" placeholder="Ex : 10" autocomplete="off"></label>
+        <label class="grow">Paiement<select id="fPay"><option value="">— aucun —</option><option value="esp">Espèces</option><option value="chq">Chèque</option><option value="gratuit">Gratuit (calendrier offert)</option></select></label>
+      </div>
+      <label id="rowMotif">Motif (calendrier gratuit)<select id="fMotif"><option value="">— choisir —</option><option value="garde">Gardé</option><option value="nouveau">Nouveaux habitants de la commune</option><option value="ancien">Ancien pompier</option><option value="echange">Échange entre casernes</option></select></label>
+      <label id="rowSouche">N° de souche (facultatif)<input id="fSouche" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex : 128"></label>
+      <label id="rowCal">Nombre de calendriers remis<input id="fCal" type="number" min="1" inputmode="numeric" value="1"></label>
+      <label>Nom du donateur<input id="fDonor" type="text" autocomplete="off"></label>
+      <label class="chk"><input id="fReceipt" type="checkbox"> Besoin d'un reçu / d'une facture</label>
+      <label id="rowEmail">E-mail ou précision pour l'envoi<input id="fEmail" type="text" autocomplete="off"></label>
+    </div>
+    <p class="sheet-label">Statut — touchez pour enregistrer</p>
+    <p id="visitInfo" class="hint" style="margin:0 0 8px"></p>
+    <div id="statusBtns" class="status-btns"></div>
+    <div id="sheetExtra" class="sheet-extra">
+      <button id="btnAddUnit" class="btn-sec">+ Autre logement ici</button>
+      <button id="btnGoMap" class="btn-sec">Voir sur la carte</button>
+      <button id="btnPlace" class="btn-sec">Placer / déplacer</button>
+      <button id="btnDelete" class="btn-danger">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT D'ADRESSES -->
+<div id="imp" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-inner imp-inner">
+    <div class="sheet-head">
+      <h2>Importer des adresses</h2>
+      <button id="impClose" class="x" aria-label="Fermer">✕</button>
+    </div>
+    <p id="impSrc" class="hint" style="margin:0"></p>
+    <p class="sheet-label" style="margin:0">Quartiers : touchez pour cocher tout le quartier</p>
+    <div id="impQuartiers" class="chips"></div>
+    <p class="sheet-label" style="margin:0">Côté de la rue (touchez le côté d'une voie pour le changer seulement pour elle)</p>
+    <div id="impSides" class="chips">
+      <button class="chip on" data-sd="all">Tous les numéros</button>
+      <button class="chip" data-sd="odd">Impairs</button>
+      <button class="chip" data-sd="even">Pairs</button>
+    </div>
+    <input id="impSearch" type="search" placeholder="Chercher une rue ou un lieu-dit…" autocomplete="off">
+    <div id="impKinds" class="chips">
+      <button class="chip on" data-k="all">Tout</button>
+      <button class="chip" data-k="rue">Rues</button>
+      <button class="chip" data-k="ld">Lieux-dits</button>
+    </div>
+    <div class="imp-actions">
+      <button id="impAll" class="btn-sec" type="button">Tout cocher (affichés)</button>
+      <button id="impNone" class="btn-sec" type="button">Tout décocher</button>
+    </div>
+    <div id="impList" class="imp-list"></div>
+    <p id="impSum" class="hint" style="margin:0"></p>
+    <button id="impGo" class="btn-main" type="button" disabled>Cochez des rues à importer</button>
+    <button id="btnImpFile" class="btn-sec" type="button">Autre commune : charger un CSV de la BAN</button>
+    <input id="impFile" type="file" accept=".csv,text/csv" class="hidden">
+    <p class="hint" style="margin:0;text-align:center">Source : Base Adresse Nationale (Licence Ouverte)</p>
+  </div>
+</div>
+
+<!-- CONNEXION -->
+<div id="login" class="login">
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <h2>Tournée calendriers</h2>
+    <p class="hint">Connectez-vous avec l'identifiant et le mot de passe qui vous ont été donnés.</p>
+    <label>Identifiant<input id="lgId" type="text" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+    <label>Mot de passe<input id="lgPw" type="password" name="password" autocomplete="current-password"></label>
+    <p id="loginErr" class="login-err"></p>
+    <button id="lgBtn" type="submit" class="btn-main">Se connecter</button>
+    <p class="hint" style="text-align:center">© Jérémy Bizeul / Vigie-lance</p>
+  </form>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<input id="fileImport" type="file" accept="application/json,.json" class="hidden">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/debug.js"></script>
+<script src="js/core.js"></script>
+<script src="js/quartiers.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/store.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/map.js"></script>
+<script src="js/list.js"></script>
+<script src="js/import.js"></script>
+<script src="js/histo.js"></script>
+<script src="js/finance.js"></script>
+<script src="js/bordereau.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/pull.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

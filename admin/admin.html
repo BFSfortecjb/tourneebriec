@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="author" content="Jérémy Bizeul / Vigie-lance">
+<meta name="copyright" content="© Jérémy Bizeul / Vigie-lance">
+<title>Administration — comptes Briec</title>
+<style>
+  body{font:15px/1.4 system-ui,sans-serif;max-width:720px;margin:20px auto;padding:0 14px;color:#1d2024}
+  h1{font-size:20px} h2{font-size:16px;margin-top:24px}
+  label{display:block;font-size:13px;color:#555;margin:10px 0 3px}
+  input{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:15px;box-sizing:border-box}
+  table{width:100%;border-collapse:collapse} td{padding:4px 4px 4px 0}
+  button{padding:9px 14px;border:0;border-radius:8px;background:#b3261e;color:#fff;font-size:15px;cursor:pointer}
+  button.sec{background:#eee;color:#222}
+  .warn{background:#fff4e5;border:1px solid #f0c27a;border-radius:8px;padding:10px;font-size:13px}
+  .ok{color:#1b7a3a;font-weight:600} .err{color:#b3261e;font-weight:600}
+  code{background:#f2f2f2;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<!-- © Jérémy Bizeul / Vigie-lance — Tous droits réservés -->
+<h1>Administration — comptes Briec</h1>
+<div class="warn">
+  Page réservée au développeur. Elle fonctionne hors ligne (double-clic sur le fichier) et ne
+  garde rien : le jeton n'est jamais enregistré. Ne la mettez pas en ligne avec le jeton rempli.
+</div>
+
+<h2>1. Accès au dépôt de données</h2>
+<label>Dépôt privé des données (pseudo/nom)</label>
+<input id="repo" placeholder="BFSfortecjb/tournee-briec-data" value="BFSfortecjb/tournee-briec-data" autocomplete="off">
+<label>Jeton GitHub (limité à ce seul dépôt, Contents : lecture et écriture)</label>
+<input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
+
+<h2>2. Comptes</h2>
+<table id="rows"></table>
+<p><button class="sec" id="add" type="button">+ Ajouter un compte</button></p>
+<p style="font-size:13px;color:#555">
+  Identifiants en minuscules, sans espace. Mots de passe générés au hasard (12 caractères) :
+  c'est ce qui protège l'accès, gardez-les tels quels ou prenez-en de longs.
+</p>
+
+<h2>3. Générer</h2>
+<button id="go" type="button">Créer users.json</button>
+<p id="msg"></p>
+<p style="font-size:13px">
+  Déposez ensuite <code>users.json</code> à la racine du dépôt du code (à côté de <code>index.html</code>),
+  puis transmettez à chaque testeur son identifiant et son mot de passe. Pour retirer un accès, supprimez
+  la ligne, régénérez le fichier et changez le jeton GitHub.
+</p>
+
+<script src="../js/auth.js"></script>
+<script>
+(function () {
+  'use strict';
+  var T = window.Tour;
+  var ALPHA = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function pw() {
+    var a = crypto.getRandomValues(new Uint8Array(12)), s = '';
+    for (var i = 0; i < a.length; i++) s += ALPHA[a[i] % ALPHA.length];
+    return s;
+  }
+  function row(id, p) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input class="rid" placeholder="identifiant" autocomplete="off" autocapitalize="off"></td>' +
+      '<td><input class="rpw" autocomplete="off"></td>' +
+      '<td><button class="sec" type="button" title="Nouveau mot de passe">🎲</button></td>' +
+      '<td><button class="sec" type="button" title="Retirer">✕</button></td>';
+    tr.querySelector('.rid').value = id || '';
+    tr.querySelector('.rpw').value = p || pw();
+    var b = tr.querySelectorAll('button');
+    b[0].onclick = function () { tr.querySelector('.rpw').value = pw(); };
+    b[1].onclick = function () { tr.remove(); };
+    document.getElementById('rows').appendChild(tr);
+  }
+  ['amine', 'jeremy'].forEach(function (id) { row(id); });
+  document.getElementById('add').onclick = function () { row(''); };
+
+  function say(t, cls) { var m = document.getElementById('msg'); m.textContent = t; m.className = cls || ''; }
+
+  document.getElementById('go').onclick = function () {
+    var repo = document.getElementById('repo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+    var token = document.getElementById('token').value.trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return say('Dépôt : format attendu pseudo/nom-du-depot', 'err');
+    if (!token) return say('Collez le jeton GitHub', 'err');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#rows tr')).map(function (tr) {
+      return { id: T.auth.normId(tr.querySelector('.rid').value), pw: tr.querySelector('.rpw').value };
+    }).filter(function (r) { return r.id || r.pw; });
+    var seen = {};
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!/^[a-z0-9._-]+$/.test(r.id)) return say('Identifiant invalide : « ' + r.id + ' » (lettres minuscules, chiffres, . _ -)', 'err');
+      if (r.pw.length < 10) return say('Mot de passe trop court pour « ' + r.id + ' » (10 caractères minimum)', 'err');
+      if (seen[r.id]) return say('Identifiant en double : ' + r.id, 'err');
+      seen[r.id] = 1;
+    }
+    if (!rows.length) return say('Ajoutez au moins un compte', 'err');
+    say('Calcul en cours…');
+    Promise.all(rows.map(function (r) { return T.auth.seal(r.id, r.pw, { repo: repo, token: token }); })).then(function (users) {
+      var blob = new Blob([JSON.stringify({ v: 1, users: users }, null, 1)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'users.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      say('users.json créé pour ' + users.length + ' compte(s). Notez bien les mots de passe affichés ci-dessus.', 'ok');
+    }).catch(function (e) { say('Erreur : ' + e.message, 'err'); });
+  };
+})();
+</script>
+</body>
+</html>
