@@ -1,0 +1,5 @@
+[
+  { "nom": "Briec", "insee": "29020", "file": "data/briec.csv", "principale": true },
+  { "nom": "Landrévarzec", "insee": "29106", "file": "data/landrevarzec.csv" },
+  { "nom": "Edern", "insee": "29048", "file": "data/edern.csv" }
+]
