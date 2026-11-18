@@ -377,9 +377,7 @@
     buildBilan();
     if (T.stats) T.stats.init();
     bindLogin();
-    // Compte de tournée : écrans d'administration masqués (import, secteurs)
-    function applyRole() { document.body.classList.toggle('restricted', T.store.restricted()); }
-    T.bus.on('change', applyRole); applyRole();
+
     // La case « chien » s'enregistre tout de suite pour une habitation existante
     T.$('#fFF').addEventListener('change', function () {
       if (cur && cur.id) { T.store.update(cur.id, { ff: this.checked }); T.toast(this.checked ? '🧑‍🚒 Ancien pompier noté' : 'Ancien pompier retiré'); }

@@ -51,7 +51,7 @@
           return '<div class="srow"><div class="grow"><b>' + T.esc(s.name) + '</b><small>' + parts.length + ' quartier(s)/rue(s)' + ty + ' · ' + sectorStats(s) + '</small></div>' +
             '<button type="button" class="btn-sec" data-sedit="' + s.id + '">Modifier</button></div>';
         }).join('') : '<p class="empty">Aucun secteur pour l\'instant.</p>') +
-        '<div class="acts"><button type="button" class="btn-main" id="sNew">＋ Nouveau secteur</button><button type="button" class="btn-sec" id="sClose">Fermer</button></div>';
+        '<div class="acts"><button type="button" class="btn-main" id="sNew">＋ Nouveau secteur</button><button type="button" class="btn-sec" id="sLoad">Charger les 3 tournées (carte de répartition)</button><button type="button" class="btn-sec" id="sClose">Fermer</button></div>';
     } else {
       var q = edSearch.toLowerCase();
       html = '<h4>' + (ed.id ? 'Modifier le secteur' : 'Nouveau secteur') + '</h4>' +
@@ -86,8 +86,23 @@
       if (ev) {
         var s = T.store.sectors().filter(function (x) { return x.id === ev.getAttribute('data-sedit'); })[0];
         if (s) { ed = { id: s.id, name: s.name, quartiers: s.quartiers.slice(), streets: s.streets.slice(), type: s.type || '', owner: s.owner || '' }; edSearch = ''; renderSectorBox(); }
-      } else if (id === 'sNew') { ed = { id: '', name: '', quartiers: [], streets: [], type: '', owner: '' }; edSearch = ''; renderSectorBox(); }
+      } else if (id === 'sNew') { ed = { id: '', name: '', quartiers: [], streets: [], type: '', owner: T.store.restricted() ? T.store.team().toLowerCase() : '' }; edSearch = ''; renderSectorBox(); }
       else if (id === 'sClose') { box.classList.add('hidden'); }
+      else if (id === 'sLoad') {
+        // Secteurs et rues préparés d'après la carte de répartition (data/secteurs.json)
+        fetch('data/secteurs.json', { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) throw new Error('absent');
+          return r.json();
+        }).then(function (list) {
+          var n = 0;
+          list.forEach(function (d) {
+            var ex = T.store.sectors().filter(function (x) { return x.name === d.nom; })[0];
+            T.store.saveSector(ex ? ex.id : '', d.nom, ex ? ex.quartiers : [], d.rues || [], d.type || '', d.owner || '');
+            n++;
+          });
+          T.toast(n + ' secteur(s) chargé(s)'); renderSectorBox(); render();
+        }).catch(function () { T.toast('Fichier data/secteurs.json introuvable'); });
+      }
       else if (id === 'sCancel') { ed = null; renderSectorBox(); }
       else if (id === 'sSave') {
         ed.name = T.$('#sName').value;

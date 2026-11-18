@@ -126,7 +126,8 @@
   }
   function quartier(street) { return (T.quartierOf && T.quartierOf(street)) || 'Autres rues'; }
 
-  // Cloisonnement : un compte de tournée ne voit que les habitations des secteurs qui lui sont confiés.
+  // Cloisonnement : un compte de tournée ne voit que les habitations des secteurs qui lui sont confiés,
+  // plus celles qu'il a lui-même ajoutées dans une rue sans secteur.
   // Le trésorier (T.TRESORIERS) et les comptes sans identité voient tout. Simple filtre d'affichage, pas une sécurité.
   function isRestricted() {
     var me = state.settings.team || '';
@@ -142,11 +143,12 @@
   }
   function vis() {
     if (!isRestricted()) return state.houses;
-    var mine = mySectorNames(), memo = {};
+    var mine = mySectorNames(), me = (state.settings.team || '').toLowerCase(), memo = {};
     return state.houses.filter(function (h) {
       var k = h.street || '';
-      if (memo[k] === undefined) memo[k] = !!mine[T.store.sectorOf(k)];
-      return memo[k];
+      if (memo[k] === undefined) { var sn = T.store.sectorOf(k); memo[k] = sn ? (mine[sn] ? 1 : 0) : 2; }   // 2 = rue sans secteur
+      // Rue sans secteur : visible seulement par celui qui l'a ajoutée, jusqu'à ce qu'elle soit rangée dans un secteur
+      return memo[k] === 1 || (memo[k] === 2 && String(h.team || '').toLowerCase() === me);
     });
   }
 
@@ -263,7 +265,7 @@
           return;
         }
         var h = { id: addrId(a.street, a.number), street: a.street, number: String(a.number), unit: '', lat: a.lat, lng: a.lng,
-          status: 'todo', note: '', team: '', updated: now };
+          status: 'todo', note: '', team: state.settings.team || '', updated: now };
         state.houses.push(h);
         idx[key] = [h];
         created++;

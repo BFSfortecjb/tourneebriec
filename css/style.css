@@ -199,5 +199,3 @@ ul.upc{margin:0;padding-left:18px}
 .evagenda .srow{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
 .evagenda .grow{flex:1;min-width:0}.evagenda small{display:block;color:#666}
 
-/* Compte de tournée (cloisonné) : pas d'import ni de gestion des secteurs */
-body.restricted #btnOpenImp, body.restricted #btnSectors, body.restricted #sectorBox { display: none !important; }
