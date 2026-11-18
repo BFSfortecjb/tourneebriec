@@ -9,7 +9,12 @@
   // Identité de la tournée (titre des exports et du bordereau)
   T.TOURNEE = { num: 1, titre: 'Tournée de calendriers — Briec', commune: 'Briec' };
 
-  T.VERSION = '0.27-briec';
+  T.VERSION = '0.28-briec';
+
+  // Comptes de Briec : le trésorier suit toutes les tournées ; chaque compte de tournée ne voit que son secteur.
+  // (Version finale : une administration des tournées permettra de gérer affectations et répartition.)
+  T.TRESORIERS = ['jeremy'];
+  T.COMPTES = ['amine', 'christophe', 'sebastien'];
 
   T.STATUS = {
     todo:     { label: 'Pas visité', color: '#8a8f98' },
