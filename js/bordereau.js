@@ -7,7 +7,7 @@
   'use strict';
   var T = window.Tour;
   var fmt = function (n) { return T.money.fmt(n); };
-  function dayFr(d) { var p = String(d).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : d; }
+  function dayFr(d) { if (d === 'global') return 'Tous les jours'; var p = String(d).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : d; }
   function denomList(map) {
     return Object.keys(map).sort(function (a, b) { return parseFloat(b.replace('_', '.')) - parseFloat(a.replace('_', '.')); })
       .map(function (k) { return [parseFloat(k.replace('_', '.')), map[k]]; });
@@ -95,14 +95,15 @@
     var B = T.store.bordereau(), f = B.fin;
     var totCompte = 0, nCompte = 0;
     var lines = B.rows.map(function (r) {
-      var cEsp = '—', cChq = '—', ecart = '<span class="nc">non compté</span>';
+      var cEsp = '—', cChq = '—', ecart = r.inGlobal ? '<span class="ok">compté globalement</span>' : '<span class="nc">non compté</span>';
+      if (r.inGlobal) nCompte++;
       if (r.compte) {
         totCompte += r.compte.esp + r.compte.chq; nCompte++;
         cEsp = fmt(r.compte.esp); cChq = fmt(r.compte.chq);
         var d = Math.round((r.compte.esp + r.compte.chq - r.saisi.total) * 100) / 100;
         ecart = Math.abs(d) < 0.005 ? '<span class="ok">OK</span>' : '<span class="ko">' + (d > 0 ? '+' : '') + fmt(d) + '</span>';
       }
-      return '<tr><td>' + dayFr(r.day) + '</td><td>' + T.esc(r.who) + '</td><td class="n">' + r.saisi.cal + (r.saisi.kept ? ' (+' + r.saisi.kept + ' gardés)' : '') + '</td><td class="n">' + fmt(r.saisi.esp) + '</td><td class="n">' + fmt(r.saisi.chq) + '</td>' +
+      return '<tr><td>' + dayFr(r.day) + (r.countedAt ? '<br><small>compté le ' + new Date(r.countedAt).toLocaleDateString('fr-FR') + '</small>' : '') + '</td><td>' + (r.who === T.GLOBAL ? '<b>Comptage global</b>' : T.esc(r.who)) + '</td><td class="n">' + r.saisi.cal + (r.saisi.kept ? ' (+' + r.saisi.kept + ' gardés)' : '') + '</td><td class="n">' + fmt(r.saisi.esp) + '</td><td class="n">' + fmt(r.saisi.chq) + '</td>' +
         '<td class="n"><b>' + fmt(r.saisi.total) + '</b></td><td class="n">' + cEsp + '</td><td class="n">' + cChq + '</td><td class="n">' + ecart + '</td></tr>';
     }).join('') || '<tr><td colspan="9">Aucun don saisi.</td></tr>';
 

@@ -7,7 +7,7 @@
   var T = window.Tour;
   var filter = 'all', quartier = 'all', sector = 'all', ed = null, edSearch = '';
   // Rues dépliées (par défaut tout est replié) ; mémorisé sur cet appareil seulement
-  var FOLD_KEY = 'bfs_briec_open_v1', open = loadOpen();
+  var FOLD_KEY = 'bfs_tournee_open_v1', open = loadOpen();
   function loadOpen() { try { return JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch (e) { return {}; } }
   function saveOpen() { try { localStorage.setItem(FOLD_KEY, JSON.stringify(open)); } catch (e) { /* ignore */ } }
 
@@ -15,7 +15,7 @@
     var s = T.store.stats();
     var items = [['all', 'Tout (' + s.total + ')']].concat(T.STATUS_ORDER.map(function (k) {
       return [k, T.STATUS[k].label + ' (' + s[k] + ')'];
-    }));
+    }), [['nodon', '💶 Passé sans montant (' + T.store.all().filter(T.store.sansDon).length + ')']]);
     T.$('#filters').innerHTML = items.map(function (it) {
       return '<button class="chip' + (filter === it[0] ? ' on' : '') + '" data-f="' + it[0] + '">' + T.esc(it[1]) + '</button>';
     }).join('');
@@ -47,17 +47,15 @@
       var secs = T.store.sectors();
       html = '<h4>Secteurs</h4><p class="small">Un secteur regroupe des quartiers et/ou des rues (par exemple un secteur par distributeur).</p>' +
         (secs.length ? secs.map(function (s) {
-          var parts = s.quartiers.concat(s.streets), ty = (s.type === 'ville' ? ' · ville' : s.type === 'campagne' ? ' · campagne' : '') + (s.owner ? ' · tournée de ' + T.esc(s.owner) : ' · sans tournée');
+          var parts = s.quartiers.concat(s.streets), ty = s.type === 'ville' ? ' · ville' : s.type === 'campagne' ? ' · campagne' : '';
           return '<div class="srow"><div class="grow"><b>' + T.esc(s.name) + '</b><small>' + parts.length + ' quartier(s)/rue(s)' + ty + ' · ' + sectorStats(s) + '</small></div>' +
             '<button type="button" class="btn-sec" data-sedit="' + s.id + '">Modifier</button></div>';
         }).join('') : '<p class="empty">Aucun secteur pour l\'instant.</p>') +
-        '<div class="acts"><button type="button" class="btn-main" id="sNew">＋ Nouveau secteur</button><button type="button" class="btn-sec" id="sLoad">Charger les 3 tournées (carte de répartition)</button><button type="button" class="btn-sec" id="sClose">Fermer</button></div>';
+        '<div class="acts"><button type="button" class="btn-main" id="sNew">＋ Nouveau secteur</button><button type="button" class="btn-sec" id="sClose">Fermer</button></div>';
     } else {
       var q = edSearch.toLowerCase();
       html = '<h4>' + (ed.id ? 'Modifier le secteur' : 'Nouveau secteur') + '</h4>' +
         '<label>Nom du secteur<input id="sName" type="text" value="' + T.esc(ed.name) + '" placeholder="Ex : Secteur Centre-bourg" autocomplete="off"></label>' +
-        '<label>Tournée confiée à<select id="sOwner"><option value="">Personne (pas encore attribuée)</option>' +
-        (T.COMPTES || []).map(function (c) { return '<option value="' + T.esc(c) + '"' + (ed.owner === c ? ' selected' : '') + '>' + T.esc(c) + '</option>'; }).join('') + '</select></label>' +
         '<label>Type de secteur<select id="sType"><option value="">Non précisé</option><option value="ville"' + (ed.type === 'ville' ? ' selected' : '') + '>Ville (bourg)</option><option value="campagne"' + (ed.type === 'campagne' ? ' selected' : '') + '>Campagne (hameaux, lieux-dits)</option></select></label>' +
         '<p class="sheet-label">Quartiers</p><div class="pick">' +
         T.QUARTIERS.map(function (qt) {
@@ -85,30 +83,15 @@
       var id = e.target.id, ev = e.target.closest('[data-sedit]');
       if (ev) {
         var s = T.store.sectors().filter(function (x) { return x.id === ev.getAttribute('data-sedit'); })[0];
-        if (s) { ed = { id: s.id, name: s.name, quartiers: s.quartiers.slice(), streets: s.streets.slice(), type: s.type || '', owner: s.owner || '' }; edSearch = ''; renderSectorBox(); }
-      } else if (id === 'sNew') { ed = { id: '', name: '', quartiers: [], streets: [], type: '', owner: T.store.restricted() ? T.store.team().toLowerCase() : '' }; edSearch = ''; renderSectorBox(); }
+        if (s) { ed = { id: s.id, name: s.name, quartiers: s.quartiers.slice(), streets: s.streets.slice(), type: s.type || '' }; edSearch = ''; renderSectorBox(); }
+      } else if (id === 'sNew') { ed = { id: '', name: '', quartiers: [], streets: [], type: '' }; edSearch = ''; renderSectorBox(); }
       else if (id === 'sClose') { box.classList.add('hidden'); }
-      else if (id === 'sLoad') {
-        // Secteurs et rues préparés d'après la carte de répartition (data/secteurs.json)
-        fetch('data/secteurs.json', { cache: 'no-store' }).then(function (r) {
-          if (!r.ok) throw new Error('absent');
-          return r.json();
-        }).then(function (list) {
-          var n = 0;
-          list.forEach(function (d) {
-            var ex = T.store.sectors().filter(function (x) { return x.name === d.nom; })[0];
-            T.store.saveSector(ex ? ex.id : '', d.nom, ex ? ex.quartiers : [], d.rues || [], d.type || '', d.owner || '');
-            n++;
-          });
-          T.toast(n + ' secteur(s) chargé(s)'); renderSectorBox(); render();
-        }).catch(function () { T.toast('Fichier data/secteurs.json introuvable'); });
-      }
       else if (id === 'sCancel') { ed = null; renderSectorBox(); }
       else if (id === 'sSave') {
         ed.name = T.$('#sName').value;
         if (!ed.name.trim()) { T.toast('Donnez un nom au secteur'); return; }
         if (T.store.sectors().some(function (s) { return s.id !== ed.id && s.name.toLowerCase() === ed.name.trim().toLowerCase(); })) { T.toast('Un secteur porte déjà ce nom'); return; }
-        T.store.saveSector(ed.id, ed.name, ed.quartiers, ed.streets, T.$('#sType').value, T.$('#sOwner').value);
+        T.store.saveSector(ed.id, ed.name, ed.quartiers, ed.streets, T.$('#sType').value);
         ed = null; T.toast('Secteur enregistré'); renderSectorBox(); render();
       } else if (id === 'sDel') {
         if (confirm('Supprimer le secteur « ' + ed.name + ' » ? Les rues et quartiers ne sont pas supprimés.')) {
@@ -144,7 +127,6 @@
     if (!list.length) {
       body.innerHTML = '<p class="empty">' + (T.store.all().length
         ? 'Aucune habitation avec ce statut.'
-        : T.store.restricted() ? 'Aucun secteur ne vous est encore attribué : demandez au trésorier de vous confier votre tournée.'
         : 'Aucune habitation pour l\'instant.<br>Ajoutez une rue ici, ou touchez la carte avec le bouton ＋.') + '</p>';
       return;
     }

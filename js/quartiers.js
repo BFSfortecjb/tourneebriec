@@ -1,6 +1,6 @@
 /*!
  * Tournée calendriers — quartiers.js (regroupement des voies en quartiers)
- * Les noms de voies sont ceux de la Base Adresse Nationale de Briec.
+ * Les noms de voies sont ceux de la Base Adresse Nationale de Bannalec.
  * Pour ajouter un quartier ou une voie, modifier la liste ci-dessous.
  * © Jérémy Bizeul / Vigie-lance — Tous droits réservés
  */
@@ -8,7 +8,13 @@
   'use strict';
   var T = window.Tour = window.Tour || {};
 
-  T.QUARTIERS = [];
+  T.QUARTIERS = [
+    { name: 'Kergoz',          voies: ['Kergoz'] },
+    { name: 'Kerliver',        voies: ['Kerliver', 'Rue de Kerliver'] },
+    { name: 'Coatéréac',       voies: ['Coatéréac'] },
+    { name: 'Menez Coatéréac', voies: ['Menez Coatéréac'] },
+    { name: 'Saint Thurien',   voies: ['Rue de Saint Thurien'] }
+  ];
 
   function norm(s) {
     return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();

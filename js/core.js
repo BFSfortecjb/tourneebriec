@@ -7,14 +7,10 @@
   var T = window.Tour = window.Tour || {};
 
   // Identité de la tournée (titre des exports et du bordereau)
-  T.TOURNEE = { num: 1, titre: 'Tournée de calendriers — Briec', commune: 'Briec' };
+  T.TOURNEE = { num: 5, titre: 'Tournée de calendriers n°5', commune: 'Bannalec' };
 
-  T.VERSION = '0.28-briec';
-
-  // Comptes de Briec : le trésorier suit toutes les tournées ; chaque compte de tournée ne voit que son secteur.
-  // (Version finale : une administration des tournées permettra de gérer affectations et répartition.)
-  T.TRESORIERS = ['jeremy'];
-  T.COMPTES = ['amine', 'christophe', 'sebastien'];
+  T.VERSION = '0.28-test';
+  T.GLOBAL = 'Tous';   // comptage global : toutes personnes, tous jours
 
   T.STATUS = {
     todo:     { label: 'Pas visité', color: '#8a8f98' },

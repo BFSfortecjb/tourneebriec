@@ -359,8 +359,7 @@
       ? '<table><tr><th>Secteur</th><th>Passé</th><th>À repasser</th><th>Refus</th><th>Inhab.</th><th>Reste</th></tr>' +
         sk.sort(function (a, b) { return a === 'Hors secteur' ? 1 : b === 'Hors secteur' ? -1 : a.localeCompare(b, 'fr'); }).map(function (k) {
           var x = bs[k];
-          var ow = (T.store.sectors().filter(function (z) { return z.name === k; })[0] || {}).owner;
-          return '<tr><td>' + T.esc(k) + (ow ? ' <em>(' + T.esc(ow) + ')</em>' : '') + ' <small>(' + (x.total - x.todo) + '/' + x.total + ')</small></td><td>' + x.passe + '</td><td>' + x.repasser + '</td><td>' + x.refus + '</td><td>' + x.inhabite + '</td><td>' + x.todo + '</td></tr>';
+          return '<tr><td>' + T.esc(k) + ' <small>(' + (x.total - x.todo) + '/' + x.total + ')</small></td><td>' + x.passe + '</td><td>' + x.repasser + '</td><td>' + x.refus + '</td><td>' + x.inhabite + '</td><td>' + x.todo + '</td></tr>';
         }).join('') + '</table>'
       : '<p class="hint">Aucun secteur créé : Liste → Secteurs.</p>';
     T.$('#accountTxt').textContent = T.sync.user() ? 'Connecté : ' + T.sync.user() : 'Non connecté';
@@ -377,7 +376,6 @@
     buildBilan();
     if (T.stats) T.stats.init();
     bindLogin();
-
     // La case « chien » s'enregistre tout de suite pour une habitation existante
     T.$('#fFF').addEventListener('change', function () {
       if (cur && cur.id) { T.store.update(cur.id, { ff: this.checked }); T.toast(this.checked ? '🧑‍🚒 Ancien pompier noté' : 'Ancien pompier retiré'); }

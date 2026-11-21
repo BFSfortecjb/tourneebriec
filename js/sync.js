@@ -8,7 +8,7 @@
 (function () {
   'use strict';
   var T = window.Tour;
-  var CFG_KEY = 'bfs_briec_sync_v2';
+  var CFG_KEY = 'bfs_tournee_sync_v2';
   var FILE = 'tournee-data.json';
   var BK_DIR = 'sauvegardes';
   var BK_EVERY = 3600000;           // une sauvegarde automatique par heure et par appareil, au plus

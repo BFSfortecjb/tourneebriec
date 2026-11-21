@@ -94,7 +94,7 @@
   }
 
   function init() {
-    map = L.map('map', { zoomControl: false }).setView([48.1, -3.99], 13);
+    map = L.map('map', { zoomControl: false }).setView([48.2, -3.5], 9);
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,

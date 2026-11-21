@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var T = window.Tour;
-  var KEY = 'bfs_briec_v1';
+  var KEY = 'bfs_tournee_v1';
   var state = { houses: [], settings: { team: '' }, deleted: [], caisse: {}, stock: {}, params: null, sectors: {}, events: {} };
 
   function load() {
@@ -126,37 +126,10 @@
   }
   function quartier(street) { return (T.quartierOf && T.quartierOf(street)) || 'Autres rues'; }
 
-  // Cloisonnement : un compte de tournée ne voit que les habitations des secteurs qui lui sont confiés,
-  // plus celles qu'il a lui-même ajoutées dans une rue sans secteur.
-  // Le trésorier (T.TRESORIERS) et les comptes sans identité voient tout. Simple filtre d'affichage, pas une sécurité.
-  function isRestricted() {
-    var me = state.settings.team || '';
-    return !!me && (T.TRESORIERS || []).indexOf(me.toLowerCase()) < 0;
-  }
-  function mySectorNames() {
-    var me = (state.settings.team || '').toLowerCase(), out = {};
-    Object.keys(state.sectors).forEach(function (id) {
-      var s = state.sectors[id];
-      if (!s.deleted && String(s.owner || '').toLowerCase() === me) out[s.name] = 1;
-    });
-    return out;
-  }
-  function vis() {
-    if (!isRestricted()) return state.houses;
-    var mine = mySectorNames(), me = (state.settings.team || '').toLowerCase(), memo = {};
-    return state.houses.filter(function (h) {
-      var k = h.street || '';
-      if (memo[k] === undefined) { var sn = T.store.sectorOf(k); memo[k] = sn ? (mine[sn] ? 1 : 0) : 2; }   // 2 = rue sans secteur
-      // Rue sans secteur : visible seulement par celui qui l'a ajoutée, jusqu'à ce qu'elle soit rangée dans un secteur
-      return memo[k] === 1 || (memo[k] === 2 && String(h.team || '').toLowerCase() === me);
-    });
-  }
-
   T.store = {
-    all: function () { return vis(); },
+    all: function () { return state.houses; },
     get: function (id) { return state.houses.filter(function (h) { return h.id === id; })[0] || null; },
     team: function () { return state.settings.team || ''; },
-    restricted: isRestricted,
     setTeam: function (t) {
       state.settings.team = String(t || '').trim();
       persist();
@@ -199,17 +172,20 @@
       var h = T.store.get(id);
       if (!h) return null;
       // Un don modifié est daté et attribué à l'équipe qui le saisit
-      var donChanged = (patch.amount !== undefined && patch.amount !== h.amount) ||
-                       (patch.pay !== undefined && patch.pay !== h.pay);
+      // Comparaison normalisée (3 = « 3 » ; vide = absent) : rouvrir une fiche et valider sans rien changer ne touche pas au don
+      var donChanged = (patch.amount !== undefined && (Number(patch.amount) || 0) !== (Number(h.amount) || 0)) ||
+                       (patch.pay !== undefined && (patch.pay || '') !== (h.pay || ''));
+      var hadDon = !!h.pay && !!h.paid_by;   // don déjà saisi par quelqu'un : on garde qui l'a encaissé et quand
+      var statusChanged = patch.status !== undefined && patch.status !== h.status;
       Object.keys(patch).forEach(function (k) { h[k] = patch[k]; });
       if (h.pay !== 'gratuit') h.motif = '';
       if (h.pay !== 'esp' && h.pay !== 'chq') h.souche = '';
       if (opts && opts.visit) addVisit(h, h.status);
       if (donChanged) {
-        if (h.pay) { h.paid_on = today(); h.paid_by = state.settings.team || h.paid_by || ''; }
+        if (h.pay) { if (!hadDon) { h.paid_on = today(); h.paid_by = state.settings.team || h.paid_by || ''; } }
         else { h.paid_on = ''; h.paid_by = ''; h.amount = null; h.cal = 0; }
       }
-      if (patch.status !== undefined || patch.note !== undefined || donChanged) {
+      if (statusChanged || (donChanged && !hadDon) || !h.team) {
         h.team = state.settings.team || h.team || '';
       }
       h.updated = new Date().toISOString();
@@ -265,7 +241,7 @@
           return;
         }
         var h = { id: addrId(a.street, a.number), street: a.street, number: String(a.number), unit: '', lat: a.lat, lng: a.lng,
-          status: 'todo', note: '', team: state.settings.team || '', updated: now };
+          status: 'todo', note: '', team: '', updated: now };
         state.houses.push(h);
         idx[key] = [h];
         created++;
@@ -282,12 +258,14 @@
     },
     streets: function () {
       var seen = {};
-      vis().forEach(function (h) { if (h.street) seen[h.street] = 1; });
+      state.houses.forEach(function (h) { if (h.street) seen[h.street] = 1; });
       return Object.keys(seen).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
     },
+    // Calendrier remis (statut Passé) mais aucun montant saisi (ni don, ni « gratuit »)
+    sansDon: function (h) { return h.status === 'passe' && h.pay !== 'gratuit' && !(Number(h.amount) > 0); },
     sorted: function (filter) {
-      return vis()
-        .filter(function (h) { return !filter || filter === 'all' || h.status === filter; })
+      return state.houses
+        .filter(function (h) { return !filter || filter === 'all' || (filter === 'nodon' ? T.store.sansDon(h) : h.status === filter); })
         .sort(function (a, b) {
           var s = (a.street || '~').localeCompare(b.street || '~', 'fr');
           return s || numKey(a.number) - numKey(b.number) ||
@@ -296,14 +274,14 @@
         });
     },
     stats: function () {
-      var s = { total: vis().length, todo: 0, passe: 0, repasser: 0, refus: 0, inhabite: 0 };
-      vis().forEach(function (h) { if (s[h.status] !== undefined) s[h.status]++; });
+      var s = { total: state.houses.length, todo: 0, passe: 0, repasser: 0, refus: 0, inhabite: 0 };
+      state.houses.forEach(function (h) { if (s[h.status] !== undefined) s[h.status]++; });
       return s;
     },
     // Passages : total, par équipe, adresses visitées plusieurs fois
     visitStats: function () {
       var out = { total: 0, byTeam: {}, multi: 0, housesVisited: 0 };
-      vis().forEach(function (h) {
+      state.houses.forEach(function (h) {
         var v = h.visits || [];
         if (!v.length) return;
         out.housesVisited++;
@@ -314,7 +292,7 @@
     },
     byTeam: function () {
       var out = {};
-      vis().forEach(function (h) {
+      state.houses.forEach(function (h) {
         if (h.status === 'todo') return;
         var k = h.team || '(sans équipe)';
         out[k] = out[k] || { passe: 0, repasser: 0, refus: 0, inhabite: 0 };
@@ -326,7 +304,7 @@
     // Avancement par secteur (toutes les habitations, y compris « pas visité »)
     bySector: function () {
       var out = {};
-      vis().forEach(function (h) {
+      state.houses.forEach(function (h) {
         var k = T.store.sectorOf(h.street) || 'Hors secteur';
         out[k] = out[k] || { passe: 0, repasser: 0, refus: 0, inhabite: 0, todo: 0, total: 0 };
         out[k][h.status]++; out[k].total++;
@@ -353,7 +331,7 @@
         }
       }
       var out = { all: blank(), team: {}, quartier: {}, sector: {}, day: {}, souche: {} }, chqAmt = {};
-      vis().forEach(function (h) {
+      state.houses.forEach(function (h) {
         if (!h.pay) return;
         var who = h.paid_by || h.team || '(sans équipe)';
         add(out.all, h);
@@ -380,7 +358,7 @@
     /* Secteurs : groupes de quartiers et de rues (partagés). { id: {name, quartiers[], streets[], updated, deleted?} } */
     sectors: function () {
       return Object.keys(state.sectors).filter(function (id) { return !state.sectors[id].deleted; })
-        .map(function (id) { var s = state.sectors[id]; return { id: id, name: s.name, quartiers: s.quartiers || [], streets: s.streets || [], type: s.type || '', owner: s.owner || '' }; })
+        .map(function (id) { var s = state.sectors[id]; return { id: id, name: s.name, quartiers: s.quartiers || [], streets: s.streets || [], type: s.type || '' }; })
         .sort(function (a, b) { return a.name.localeCompare(b.name, 'fr'); });
     },
     // Secteur d'une rue : l'affectation de la rue prime sur celle de son quartier
@@ -400,7 +378,7 @@
       var l = T.store.sectors().filter(function (s) { return s.name === n; })[0];
       return (l && l.type) || '';
     },
-    saveSector: function (id, name, quartiers, streets, type, owner) {
+    saveSector: function (id, name, quartiers, streets, type) {
       name = String(name || '').replace(/\s+/g, ' ').trim();
       if (!name) return null;
       if (!id) id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -410,15 +388,15 @@
         var s = state.sectors[o]; if (o === id || s.deleted) return;
         var nq = (s.quartiers || []).filter(function (x) { return quartiers.indexOf(x) < 0; });
         var ns = (s.streets || []).filter(function (x) { return !streets.some(function (y) { return skey(y) === skey(x); }); });
-        if (nq.length !== (s.quartiers || []).length || ns.length !== (s.streets || []).length) state.sectors[o] = { name: s.name, quartiers: nq, streets: ns, type: s.type || '', owner: s.owner || '', updated: now };
+        if (nq.length !== (s.quartiers || []).length || ns.length !== (s.streets || []).length) state.sectors[o] = { name: s.name, quartiers: nq, streets: ns, type: s.type || '', updated: now };
       });
-      state.sectors[id] = { name: name, quartiers: quartiers.slice(), streets: streets.slice(), type: type === 'ville' || type === 'campagne' ? type : '', owner: String(owner || '').toLowerCase(), updated: now };
+      state.sectors[id] = { name: name, quartiers: quartiers.slice(), streets: streets.slice(), type: type === 'ville' || type === 'campagne' ? type : '', updated: now };
       save();
       return id;
     },
     deleteSector: function (id) {
       if (!state.sectors[id]) return;
-      state.sectors[id] = { name: state.sectors[id].name, quartiers: [], streets: [], type: '', owner: '', deleted: true, updated: new Date().toISOString() };
+      state.sectors[id] = { name: state.sectors[id].name, quartiers: [], streets: [], type: '', deleted: true, updated: new Date().toISOString() };
       save();
     },
     /* Événements de la commune (marché, marche, vide-grenier…), partagés : { id: {title, kind, date, start, end, repeat, until, updated, deleted?} } */
@@ -474,43 +452,47 @@
     // Comptage de caisse d'une équipe : { esp: {valeur: quantité}, chq: {...}, chqOther: euros, updated }
     // Stock de calendriers d'une personne : reçus au départ, rendus (non distribués) à la fin
     getStock: function (team) { return state.stock[team] || null; },
-    setStock: function (team, recu, rendu) {
-      state.stock[team] = { recu: Math.max(0, parseInt(recu, 10) || 0), rendu: Math.max(0, parseInt(rendu, 10) || 0), updated: new Date().toISOString() };
+    setStock: function (team, recu, rendu, hors) {
+      state.stock[team] = { recu: Math.max(0, parseInt(recu, 10) || 0), rendu: Math.max(0, parseInt(rendu, 10) || 0), hors: Math.max(0, parseInt(hors, 10) || 0), updated: new Date().toISOString() };
       save();
     },
     // Bilan des calendriers par personne : reçus, vendus (contre un don), donnés, distribués, rendus, reste théorique
     calendriers: function () {
-      var f = T.store.finance(), seen = {}, rows = [];
+      var f = T.store.finance(), seen = {}, rows = [], horsTot = 0;
       Object.keys(f.team).forEach(function (t) { seen[t] = 1; });
       Object.keys(state.stock).forEach(function (t) { seen[t] = 1; });
       Object.keys(seen).sort(function (a, b) { return a.localeCompare(b, 'fr'); }).forEach(function (t) {
         var d = f.team[t] || { sold: 0, gift: 0, cs: 0, kept: 0, cal: 0 }, s = state.stock[t] || null;
-        rows.push({ who: t, recu: s ? s.recu : null, rendu: s ? s.rendu : null, sold: d.sold, gift: d.gift, cs: d.cs, kept: d.kept, dist: d.cal,
-          reste: s ? s.recu - d.cal - d.kept : null, ecart: s ? s.recu - d.cal - d.kept - s.rendu : null });
+        var hors = s ? (s.hors || 0) : 0;   // donnés à un centre de secours, sans fiche d'habitation
+        horsTot += hors;
+        rows.push({ who: t, recu: s ? s.recu : null, rendu: s ? s.rendu : null, sold: d.sold, gift: d.gift, cs: d.cs + hors, hors: hors, kept: d.kept, dist: d.cal + hors,
+          reste: s ? s.recu - d.cal - hors - d.kept : null, ecart: s ? s.recu - d.cal - hors - d.kept - s.rendu : null });
       });
       // Calendriers gratuits par motif (tous confondus)
       var motifs = {};
-      vis().forEach(function (h) { if (h.pay === 'gratuit') { var m = h.motif || '(motif non précisé)'; motifs[m] = (motifs[m] || 0) + calOf(h); } });
-      return { rows: rows, all: f.all, motifs: motifs };
+      state.houses.forEach(function (h) { if (h.pay === 'gratuit') { var m = h.motif || '(motif non précisé)'; motifs[m] = (motifs[m] || 0) + calOf(h); } });
+      var all = Object.assign({}, f.all); all.cs = (all.cs || 0) + horsTot;
+      if (horsTot) motifs['Donnés à un centre de secours (sans fiche)'] = horsTot;
+      return { rows: rows, all: all, motifs: motifs };
     },
     // Un comptage par personne et par jour : clé « identifiant|AAAA-MM-JJ »
     today: today,
     // Plusieurs comptages possibles par personne et par jour (clé « identifiant|jour|n° ») ; les anciens (2 parties) restent lus.
     // Un comptage supprimé reste en place, marqué « deleted », pour que la suppression se propage aux autres appareils.
-    countings: function (team, day) {
+    countings: function (team, day, any) {
       var out = [];
       Object.keys(state.caisse).forEach(function (k) {
         var c = state.caisse[k], p = k.split('|');
         if (p.length < 2 || c.deleted) return;
-        if ((team != null && p[0] !== team) || (day != null && p[1] !== day)) return;
+        if (!any && ((team != null && p[0] !== team) || (day != null && day !== 'global' && p[1] !== day))) return;
         var t = T.store.caisseTotals(c);
         out.push({ key: k, who: p[0], day: p[1], esp: c.esp || {}, chq: c.chq || {}, tEsp: t.esp, tChq: t.chq, chqOther: Number(c.chqOther) || 0, at: c.created || c.updated || '' });
       });
       return out.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });
     },
     // Cumul des comptages d'une personne pour un jour : quantités par valeur + totaux en euros ; null s'il n'y en a pas
-    getCaisse: function (team, day) {
-      var l = T.store.countings(team, day);
+    getCaisse: function (team, day, any) {
+      var l = T.store.countings(team, day, any);
       if (!l.length) return null;
       var r = { esp: {}, chq: {}, tEsp: 0, tChq: 0, n: l.length };
       l.forEach(function (c) {
@@ -540,15 +522,15 @@
     // Jours connus : jours où un don a été saisi, jours déjà comptés, aujourd'hui (du plus récent au plus ancien)
     caisseDays: function () {
       var seen = {}; seen[today()] = 1;
-      vis().forEach(function (h) { if (h.pay && h.paid_on) seen[h.paid_on] = 1; });
+      state.houses.forEach(function (h) { if (h.pay && h.paid_on) seen[h.paid_on] = 1; });
       T.store.countings().forEach(function (c) { seen[c.day] = 1; });
       return Object.keys(seen).sort().reverse();
     },
     // Dons saisis par une personne un jour donné (en euros)
     financeDay: function (team, day) {
       var esp = 0, chq = 0, n = 0, gratuit = 0, cal = 0, kept = 0;
-      vis().forEach(function (h) {
-        if (!h.pay || (h.paid_by || h.team || '(sans équipe)') !== team || h.paid_on !== day) return;
+      state.houses.forEach(function (h) {
+        if (!h.pay || (team !== T.GLOBAL && (h.paid_by || h.team || '(sans équipe)') !== team) || (team !== T.GLOBAL && day !== 'global' && h.paid_on !== day)) return;
         n++;
         if (h.pay === 'gratuit') { gratuit++; if (h.motif === 'garde') kept += calOf(h); else cal += calOf(h); return; }
         cal += calOf(h);
@@ -559,8 +541,8 @@
     // Chèques saisis par une personne un jour donné : { 'montant': nombre }
     chequesDay: function (team, day) {
       var out = {};
-      vis().forEach(function (h) {
-        if (h.pay !== 'chq' || (h.paid_by || h.team || '(sans équipe)') !== team || h.paid_on !== day) return;
+      state.houses.forEach(function (h) {
+        if (h.pay !== 'chq' || !h.paid_on || (team !== T.GLOBAL && ((h.paid_by || h.team || '(sans équipe)') !== team || (day !== 'global' && h.paid_on !== day)))) return;
         var k = String(Number(h.amount) || 0).replace('.', '_');
         out[k] = (out[k] || 0) + 1;
       });
@@ -577,7 +559,7 @@
     // Données du bordereau commun : une ligne par personne et par jour, avec le saisi et le compté
     bordereau: function () {
       var keys = {};
-      vis().forEach(function (h) { if (h.pay && h.paid_on) keys[(h.paid_by || h.team || '(sans équipe)') + '|' + h.paid_on] = 1; });
+      state.houses.forEach(function (h) { if (h.pay && h.paid_on) keys[(h.paid_by || h.team || '(sans équipe)') + '|' + h.paid_on] = 1; });
       T.store.countings().forEach(function (c) { keys[c.who + '|' + c.day] = 1; });
       var rows = Object.keys(keys).sort(function (a, b) {
         var x = a.split('|'), y = b.split('|');
@@ -586,6 +568,11 @@
         var p = k.split('|'), s = T.store.financeDay(p[0], p[1]), c = T.store.getCaisse(p[0], p[1]);
         return { who: p[0], day: p[1], saisi: s, caisse: c, compte: c ? { esp: c.tEsp, chq: c.tChq } : null, n: c ? c.n : 0 };
       });
+      var hasGlobal = rows.some(function (r) { return r.who === T.GLOBAL && r.compte; });
+      rows.forEach(function (r) { if (r.day === 'global') { var cs = T.store.countings(r.who, 'global'); r.countedAt = cs.length ? cs[0].at : ''; } });
+      var globWho = {};
+      T.store.countings().forEach(function (c) { if (c.day === 'global') globWho[c.who] = 1; });
+      rows.forEach(function (r) { r.inGlobal = r.day !== 'global' && !r.compte && (hasGlobal || !!globWho[r.who]); });
       // Détail des coupures comptées (tous comptages confondus), utile pour la remise en banque
       var esp = {}, chq = {}, other = 0;
       T.store.countings().forEach(function (c) {

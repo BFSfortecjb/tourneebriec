@@ -8,7 +8,7 @@
   var T = window.Tour;
   var ESP = [200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
   var group = 'team', caisseTeam = '', caisseDay = '', panel = 'tournee';
-  try { panel = localStorage.getItem('bfs_briec_panel') || 'tournee'; } catch (e) { panel = 'tournee'; }
+  try { panel = localStorage.getItem('bfs_tournee_panel') || 'tournee'; } catch (e) { panel = 'tournee'; }
   if (['tournee', 'ponctuel', 'rendre'].indexOf(panel) < 0) panel = 'tournee';
   var fmt = function (n) { return T.money.fmt(n); };
 
@@ -60,7 +60,8 @@
   /* ---------- stock de calendriers ---------- */
   var stockTeam = '';
   function renderStock() {
-    var teams = teamList();
+    var teams = teamList().filter(function (t) { return t !== T.GLOBAL; });
+    if (!teams.length) teams = ['(sans équipe)'];
     if (!stockTeam || teams.indexOf(stockTeam) < 0) stockTeam = teams.indexOf(T.store.team()) >= 0 ? T.store.team() : teams[0];
     var sel = T.$('#stockTeam');
     // on ne reconstruit pas les champs pendant la saisie
@@ -69,6 +70,7 @@
     var s = T.store.getStock(stockTeam);
     T.$('#stRecu').value = s ? s.recu : '';
     T.$('#stRendu').value = s ? s.rendu : '';
+    T.$('#stHors').value = s && s.hors ? s.hors : '';
     renderStockTable();
   }
   function renderStockTable() {
@@ -104,7 +106,7 @@
       rows.map(function (r) {
         return '<tr><td>' + r.y + '</td><td>' + fmt(r.total) + '</td><td>' + d(r.dTotal) + '</td><td>' + (r.net == null ? '—' : fmt(r.net)) + '</td><td>' + d(r.dNet) + '</td></tr>';
       }).join('') + '</table>' +
-      '<p class="hint">Écart = cette année moins l\'année du tableau. Net = total collecté moins le coût des calendriers.</p>';
+      '<p class="hint">Écart = cette année moins l\'année du tableau. Net = total collecté moins le coût des calendriers. 2020 : pas de tournée.</p>';
   }
 
   /* ---------- reçus / factures ---------- */
@@ -124,12 +126,14 @@
     Object.keys(f.team).forEach(function (t) { seen[t] = 1; });
     T.store.teamsWithCaisse().forEach(function (t) { seen[t] = 1; });
     if (T.store.team()) seen[T.store.team()] = 1;
+    delete seen[T.GLOBAL];
     var l = Object.keys(seen).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
-    return l.length ? l : ['(sans équipe)'];
+    return [T.GLOBAL].concat(l);
   }
 
   function dayLabel(d) {
     var p = d.split('-');
+    if (d === 'global') return 'Tous les jours';
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] + (d === T.store.today() ? ' (aujourd\'hui)' : '') : d;
   }
   function key(v) { return String(v).replace('.', '_'); }
@@ -187,18 +191,20 @@
 
   function buildCaisse() {
     var sel = T.$('#caisseTeam');
+    var days = T.store.caisseDays().filter(function (d) { return d !== 'global'; });
     var teams = teamList();
-    var days = T.store.caisseDays();
-    if (!caisseDay || days.indexOf(caisseDay) < 0) caisseDay = days[0];
-    T.$('#caisseDay').innerHTML = days.map(function (d) {
+    if (!caisseTeam || teams.indexOf(caisseTeam) < 0) caisseTeam = T.GLOBAL;
+    var glob = caisseTeam === T.GLOBAL;
+    caisseDay = 'global';
+    T.$('#caisseDay').innerHTML = (['global']).map(function (d) {
       return '<option value="' + d + '"' + (d === caisseDay ? ' selected' : '') + '>' + dayLabel(d) + '</option>';
     }).join('');
-    if (!caisseTeam || teams.indexOf(caisseTeam) < 0) caisseTeam = teams.indexOf(T.store.team()) >= 0 ? T.store.team() : teams[0];
-    sel.innerHTML = teams.map(function (t) { return '<option' + (t === caisseTeam ? ' selected' : '') + '>' + T.esc(t) + '</option>'; }).join('');
+    T.$('#caisseDay').disabled = glob;
+    sel.innerHTML = teams.map(function (t) { return '<option value="' + T.esc(t) + '"' + (t === caisseTeam ? ' selected' : '') + '>' + (t === T.GLOBAL ? 'Tous (comptage global)' : T.esc(t) + ' (tous les jours)') + '</option>'; }).join('');
     // Le formulaire repart toujours à zéro : chaque enregistrement est un comptage de plus (voir l'historique)
-    var prev = T.store.getCaisse(caisseTeam, caisseDay);
+    var prev = T.store.getCaisse(caisseTeam, 'global', glob);
     T.$('#caisseBox').innerHTML = table('Espèces', ESP, 'esp', null) + chequeTable(prev) + '<div id="caisseRes"></div>';
-    T.$('#caisseMsg').textContent = prev ? prev.n + ' comptage(s) déjà enregistré(s) pour ce jour : ' + fmt(prev.tEsp + prev.tChq) + '.' : 'Aucun comptage enregistré pour ce jour.';
+    T.$('#caisseMsg').textContent = prev ? prev.n + ' comptage(s) déjà enregistré(s)' + (glob ? ' (toutes personnes et tous jours) : ' : ' pour cette personne, tous jours : ') + fmt(prev.tEsp + prev.tChq) + '.' : 'Aucun comptage enregistré.';
     computeCaisse();
     renderCountHist();
   }
@@ -227,7 +233,7 @@
       if (cell) cell.textContent = q ? fmt(d * q) : '';
     });
     Object.keys(c.chq).forEach(function (k) { counted.chq += Math.round(parseFloat(k.replace('_', '.')) * 100) * c.chq[k]; });
-    var prev = T.store.getCaisse(caisseTeam, caisseDay);
+    var prev = T.store.getCaisse(caisseTeam, 'global', caisseTeam === T.GLOBAL);
     if (prev) { counted.esp += Math.round(prev.tEsp * 100); counted.chq += Math.round(prev.tChq * 100); }
     var todo = 0, diffq = 0;
     T.$$('#caisseBox .cqk').forEach(function (cb) {
@@ -240,7 +246,7 @@
       return '<tr><td>' + label + '</td><td>' + fmt(cnt / 100) + '</td><td>' + fmt(exp) + '</td>' +
         '<td class="' + (Math.abs(diff) < 0.005 ? 'ok' : 'ko') + '">' + (Math.abs(diff) < 0.005 ? 'OK' : (diff > 0 ? '+' : '') + fmt(diff)) + '</td></tr>';
     }
-    T.$('#caisseRes').innerHTML = '<table><tr><th></th><th>Compté' + (prev ? ' (cumul du jour)' : '') + '</th><th>Saisi</th><th>Écart</th></tr>' +
+    T.$('#caisseRes').innerHTML = '<table><tr><th></th><th>Compté' + (prev ? ' (cumul)' : '') + '</th><th>Saisi</th><th>Écart</th></tr>' +
       line('Espèces', counted.esp, t.esp) + line('Chèques', counted.chq, t.chq) +
       line('Total', counted.esp + counted.chq, t.esp + t.chq) + '</table>' +
       (todo ? '<p class="hint" style="color:#d6402f">' + todo + ' montant(s) de chèques pas encore confirmé(s).</p>' : '') +
@@ -251,7 +257,7 @@
   /* ---------- démarrage ---------- */
   function showPanel(name) {
     panel = name;
-    try { localStorage.setItem('bfs_briec_panel', name); } catch (e) { /* sans stockage : on garde en mémoire */ }
+    try { localStorage.setItem('bfs_tournee_panel', name); } catch (e) { /* sans stockage : on garde en mémoire */ }
     T.$$('#finPanels .chip').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-p') === name); });
     T.$$('#donsBody .fpan').forEach(function (x) { x.classList.toggle('hidden', x.getAttribute('data-p') !== name); });
   }
@@ -271,16 +277,18 @@
       '</section>' +
       '<section class="fpan hidden" data-p="ponctuel">' +
       '<div class="card"><h3>Caisse</h3>' +
-        '<div class="row"><label class="grow">Personne<select id="caisseTeam"></select></label>' +
-        '<label class="grow">Jour<select id="caisseDay"></select></label></div>' +
+        '<p class="hint" style="margin-top:0">Comptage global : toutes les personnes, tous les jours.</p>' +
+        '<label>Personne<select id="caisseTeam"></select></label><div class="hidden"><select id="caisseDay"></select></div>' +
         '<div id="caisseBox"></div>' +
         '<button id="btnCaisseSave" class="btn-main" type="button">Enregistrer le comptage</button>' +
         '<p id="caisseMsg" class="hint"></p></div>' +
-      '<div class="card"><h3>Historique des comptages</h3><div id="countHist" style="overflow-x:auto"></div></div>' +
+      '<div class="card"><h3>Historique des comptages</h3><div id="countHist" style="overflow-x:auto"></div>' +
+        '<button id="btnCountReset" class="btn-danger" type="button" style="margin-top:10px;width:100%">Réinitialiser : supprimer tous les comptages et confirmations de chèques</button></div>' +
       '<div class="card"><h3>Calendriers : stock et restitution</h3>' +
         '<form id="stockForm"><label>Personne<select id="stockTeam"></select></label>' +
         '<div class="row"><label class="grow">Calendriers reçus au départ<input id="stRecu" type="number" min="0" inputmode="numeric"></label>' +
         '<label class="grow">Calendriers rendus (non distribués)<input id="stRendu" type="number" min="0" inputmode="numeric"></label></div>' +
+        '<label>Donnés à un centre de secours (sans fiche d\'adresse)<input id="stHors" type="number" min="0" inputmode="numeric" placeholder="Ex : 1"></label>' +
         '<button id="btnStockSave" class="btn-main" type="submit">Enregistrer</button></form>' +
         '<div id="stockTable" style="margin-top:10px;overflow-x:auto"></div>' +
         '</div>' +
@@ -327,6 +335,14 @@
       T.store.delCaisse(b.getAttribute('data-delcount'));
       buildCaisse();
     });
+    T.$('#btnCountReset').addEventListener('click', function () {
+      var l = T.store.countings(null, null, true);
+      if (!l.length) { T.toast('Aucun comptage à supprimer'); return; }
+      if (!confirm('Supprimer les ' + l.length + ' comptage(s) enregistré(s) ? Les confirmations de chèques sont remises à zéro. Les dons saisis ne sont pas touchés. Action définitive.')) return;
+      l.forEach(function (c) { T.store.delCaisse(c.key); });
+      T.toast(l.length + ' comptage(s) supprimé(s)');
+      buildCaisse();
+    });
     T.$('#caisseBox').addEventListener('input', computeCaisse);
     T.$('#caisseBox').addEventListener('change', computeCaisse);
     T.$('#btnCaisseSave').addEventListener('click', function () {
@@ -340,10 +356,10 @@
       var r = e.target.closest('[data-id]');
       if (r) T.app.openSheet(r.getAttribute('data-id'));
     });
-    T.$('#stockTeam').addEventListener('change', function () { stockTeam = this.value; var s = T.store.getStock(stockTeam); T.$('#stRecu').value = s ? s.recu : ''; T.$('#stRendu').value = s ? s.rendu : ''; });
+    T.$('#stockTeam').addEventListener('change', function () { stockTeam = this.value; var s = T.store.getStock(stockTeam); T.$('#stRecu').value = s ? s.recu : ''; T.$('#stRendu').value = s ? s.rendu : ''; T.$('#stHors').value = s && s.hors ? s.hors : ''; });
     T.$('#stockForm').addEventListener('submit', function (e) {
       e.preventDefault();
-      T.store.setStock(stockTeam, T.$('#stRecu').value, T.$('#stRendu').value);
+      T.store.setStock(stockTeam, T.$('#stRecu').value, T.$('#stRendu').value, T.$('#stHors').value);
       T.toast('Stock enregistré');
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       renderStock();

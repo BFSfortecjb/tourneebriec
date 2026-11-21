@@ -62,7 +62,7 @@
   }
 
   // Regroupe les adresses par voie. Retourne { ok, voies } ou { ok:false, msg }
-  function build(text, suffix) {
+  function build(text) {
     var rows = parseCSV(text);
     if (rows.length < 2) return { ok: false, msg: 'Fichier vide' };
     var head = rows[0].map(function (h) { return h.trim().toLowerCase(); });
@@ -75,7 +75,6 @@
     for (var i = 1; i < rows.length; i++) {
       var r = rows[i];
       var name = (r[ix.nom_voie] || '').trim();
-      if (name && suffix) name += suffix;   // communes voisines : « Rue X (Edern) », pour ne pas mélanger deux rues de même nom
       var lat = parseFloat(r[ix.lat]), lng = parseFloat(r[ix.lon]);
       var num = (r[ix.numero] || '').trim();
       if (!name || !num || isNaN(lat) || isNaN(lng)) continue;
@@ -167,8 +166,8 @@
     renderSummary();
   }
 
-  function setData(text, label, suffix) {
-    var res = build(text, suffix);
+  function setData(text, label) {
+    var res = build(text);
     if (!res.ok) { T.toast(res.msg); return false; }
     voies = res.voies; sel = {}; sides = {}; ranges = {}; defaultSide = 'all';
     var total = voies.reduce(function (n, v) { return n + v.items.length; }, 0);
@@ -177,53 +176,17 @@
     return true;
   }
 
-  // Communes proposées : data/communes.json  [{ "nom": "Briec", "insee": "29020", "file": "data/briec.csv", "principale": true }, ...]
-  // Pour ajouter une commune : déposer son CSV dans data/ et ajouter une ligne dans communes.json.
-  var communes = null, communeIdx = 0;
-
-  function loadCommunes(cb) {
-    if (communes) { cb(); return; }
-    fetch('data/communes.json', { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error('absent');
-      return r.json();
-    }).then(function (j) {
-      communes = (j && j.length) ? j : null;
-    }).catch(function () { communes = null; }).then(function () {
-      if (!communes) communes = [{ nom: 'Briec', insee: '29020', file: 'data/briec.csv', principale: true }];
-      var sel = T.$('#impCommune');
-      sel.innerHTML = communes.map(function (c, i) {
-        return '<option value="' + i + '">' + T.esc(c.nom) + (c.insee ? ' (' + T.esc(c.insee) + ')' : '') + '</option>';
-      }).join('');
-      sel.style.display = communes.length > 1 ? '' : 'none';
-      var lab = T.$('label[for="impCommune"]');
-      if (lab) lab.style.display = communes.length > 1 ? '' : 'none';
-      cb();
-    });
-  }
-
-  function loadCommune(i) {
-    var c = communes[i];
-    communeIdx = i;
-    T.$('#impSrc').textContent = 'Chargement des adresses de ' + c.nom + '…';
-    fetch(c.file, { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error('absent');
-      return r.text();
-    }).then(function (t) { setData(t, c.nom + (c.insee ? ' (' + c.insee + ')' : ''), c.principale ? '' : ' (' + c.nom + ')'); })
-      .catch(function () {
-        voies = []; sel = {}; render();
-        T.$('#impSrc').textContent = 'Fichier ' + c.file + ' introuvable pour ' + c.nom + ' : chargez le CSV de la BAN avec le bouton ci-dessous.';
-      });
-  }
-
   function open() {
     T.$('#imp').classList.remove('hidden');
     if (voies.length) { render(); return; }
-    loadCommunes(function () {
-      var p = 0;
-      communes.forEach(function (c, i) { if (c.principale) p = i; });
-      T.$('#impCommune').value = String(p);
-      loadCommune(p);
-    });
+    T.$('#impSrc').textContent = 'Chargement des adresses de Bannalec…';
+    fetch('data/bannalec.csv', { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('absent');
+      return r.text();
+    }).then(function (t) { setData(t, 'Bannalec (29004)'); })
+      .catch(function () {
+        T.$('#impSrc').textContent = 'Fichier data/bannalec.csv introuvable : chargez un CSV de la BAN avec le bouton ci-dessous.';
+      });
   }
 
   function doImport() {
@@ -244,7 +207,6 @@
   function init() {
     T.$('#btnOpenImp').addEventListener('click', open);
     T.$('#impClose').addEventListener('click', function () { T.$('#imp').classList.add('hidden'); });
-    T.$('#impCommune').addEventListener('change', function () { loadCommune(parseInt(this.value, 10)); });
     T.$('#impSearch').addEventListener('input', function () { query = this.value; render(); });
     T.$('#impQuartiers').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]');
